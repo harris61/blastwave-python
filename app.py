@@ -20,7 +20,8 @@ def main() -> None:
     st.markdown(
         """
         <style>
-        .block-container { padding-top: 1rem; }
+        .block-container { padding-top: 0; padding-bottom: 2rem; }
+        section.main > div { padding-top: 4rem !important; }
         .bw-title { font-size: 2rem; font-weight: 700; margin: 0.2rem 0 0.6rem; }
         .bw-subtitle { font-size: 1.1rem; font-weight: 600; margin: 0.4rem 0; }
         .bw-label { font-size: 0.95rem; font-weight: 600; margin: 0.2rem 0; }
