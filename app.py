@@ -20,10 +20,11 @@ def main() -> None:
     st.markdown(
         """
         <style>
-        .stApp { padding-top: 1rem; }
-        [data-testid="stAppViewContainer"] > .main { padding-top: 3.5rem !important; }
-        .block-container { padding-top: 0; padding-bottom: 2rem; }
-        section.main > div { padding-top: 0 !important; }
+        [data-testid="stAppViewContainer"] > .main {
+            padding-top: 20px !important;
+            padding-bottom: 2rem;
+        }
+        .block-container { padding-top: 0; }
         .bw-title { font-size: 2rem; font-weight: 700; margin: 0.2rem 0 0.6rem; }
         .bw-subtitle { font-size: 1.1rem; font-weight: 600; margin: 0.4rem 0; }
         .bw-label { font-size: 0.95rem; font-weight: 600; margin: 0.2rem 0; }
