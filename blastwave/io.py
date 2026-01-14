@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import List
 
@@ -7,7 +8,13 @@ DEFAULT_SPS = 1024
 
 
 def get_default_dir() -> Path:
-    return Path.home() / "Documents" / "Blasting Data"
+    env_path = os.getenv("BLASTWAVE_DATA_DIR")
+    if env_path:
+        return Path(env_path).expanduser()
+    home_dir = Path.home() / "Documents" / "Blasting Data"
+    if home_dir.exists():
+        return home_dir
+    return Path(__file__).resolve().parents[1] / "Blasting Data"
 
 
 def load_signature_wave(
