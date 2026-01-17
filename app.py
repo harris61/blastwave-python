@@ -249,6 +249,8 @@ def extract_archive(archive_path: Path, target_dir: Path) -> List[str]:
                 "Please upload a .zip package instead."
             ]
         result = shutil.which(extractor) or extractor
+        if sys.platform != "win32":
+            ensure_executable(Path(result))
         try:
             run = subprocess.run(
                 [result, "x", str(archive_path), f"-o{target_dir}", "-y"],
@@ -283,11 +285,19 @@ def find_7z_executable() -> Optional[str]:
             ]
         )
     else:
-        candidates.append(str(Path(__file__).parent / "tools" / "7z" / "7z"))
+        candidates.append(str(Path(__file__).parent / "tools" / "7z" / "7zz"))
     for candidate in candidates:
         if candidate and Path(candidate).exists():
             return candidate
     return None
+
+
+def ensure_executable(path: Path) -> None:
+    try:
+        mode = path.stat().st_mode
+        path.chmod(mode | 0o111)
+    except OSError:
+        pass
 
 
 def find_data_root(extracted_dir: Path) -> Optional[Path]:
