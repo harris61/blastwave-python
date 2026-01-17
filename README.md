@@ -46,7 +46,7 @@ streamlit run app.py
 - Signature wave files must contain at least three numeric columns per line.
 - Delay files skip the first line (header); remaining lines are delay values in ms.
 - Output waveforms are saved as plain text with one value per line.
-- `.rar` extraction requires 7-Zip (`7z`). This repo bundles `tools/7z/7z.exe` for Streamlit Cloud; otherwise upload a `.zip` package.
+- `.rar` extraction requires 7-Zip (`7z`) that matches the server OS. Streamlit Cloud runs on Linux, so upload a `.zip` package unless a Linux 7z binary is bundled.
 - Upload limit is 100 MB by default (configurable in `.streamlit/config.toml`).
 
 ## Documentation

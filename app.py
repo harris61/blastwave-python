@@ -5,6 +5,7 @@ import hashlib
 import io
 import shutil
 import subprocess
+import sys
 import tempfile
 import zipfile
 
@@ -258,7 +259,10 @@ def extract_archive(archive_path: Path, target_dir: Path) -> List[str]:
         except OSError as exc:
             return [f"Failed to extract RAR file. {exc}"]
         if run.returncode != 0:
-            return ["Failed to extract RAR file. Ensure it is a valid .rar archive."]
+            return [
+                "Failed to extract RAR file. Ensure it is a valid .rar archive "
+                "and that 7-Zip matches the server OS."
+            ]
         return []
 
     return ["Unsupported archive type. Please upload a .rar or .zip file."]
@@ -269,10 +273,17 @@ def find_7z_executable() -> Optional[str]:
         shutil.which("7z"),
         shutil.which("7za"),
         shutil.which("7zr"),
-        str(Path(__file__).parent / "tools" / "7z" / "7z.exe"),
-        "C:\\Program Files\\7-Zip\\7z.exe",
-        "C:\\Program Files (x86)\\7-Zip\\7z.exe",
     ]
+    if sys.platform == "win32":
+        candidates.extend(
+            [
+                str(Path(__file__).parent / "tools" / "7z" / "7z.exe"),
+                "C:\\Program Files\\7-Zip\\7z.exe",
+                "C:\\Program Files (x86)\\7-Zip\\7z.exe",
+            ]
+        )
+    else:
+        candidates.append(str(Path(__file__).parent / "tools" / "7z" / "7z"))
     for candidate in candidates:
         if candidate and Path(candidate).exists():
             return candidate

@@ -51,4 +51,4 @@ Each output file contains one value per line.
 
 - Verify the sampling rate is consistent across signature files.
 - Ensure delay and explosive weight files have matching counts per scenario.
-- If `.rar` extraction fails, upload a `.zip` package or ensure 7-Zip (`7z`) is available (the repo bundles `tools/7z/7z.exe` for Cloud).
+- If `.rar` extraction fails, upload a `.zip` package or ensure 7-Zip (`7z`) for the server OS is available (Streamlit Cloud uses Linux).
