@@ -371,7 +371,11 @@ def list_numeric_files(dir_path: Path) -> List[Path]:
     files: List[Path] = []
     if not dir_path.exists():
         return files
-    for path in dir_path.glob("*.txt"):
+    for path in dir_path.iterdir():
+        if not path.is_file():
+            continue
+        if path.suffix.lower() != ".txt":
+            continue
         try:
             value = int(path.stem)
         except ValueError:
