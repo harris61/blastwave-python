@@ -50,8 +50,8 @@ def main() -> None:
     render_header(left_logo, right_logo)
 
     st.markdown('<div class="bw-content">', unsafe_allow_html=True)
-    data_dir, metadata, validation_errors = load_data_package()
-    render_metadata(metadata, validation_errors)
+    data_dir, metadata, validation_errors, has_upload = load_data_package()
+    render_metadata(metadata, validation_errors, has_upload)
 
     inputs = render_inputs(metadata, data_dir is not None and not validation_errors)
 
@@ -99,11 +99,12 @@ def render_header(left_logo: str, right_logo: str) -> None:
     )
 
 
-def render_metadata(metadata: dict, validation_errors: List[str]) -> None:
-    if validation_errors:
-        st.error("Data package validation failed:\n" + "\n".join(f"- {err}" for err in validation_errors))
-    else:
-        st.success("Data package validation passed.")
+def render_metadata(metadata: dict, validation_errors: List[str], has_upload: bool) -> None:
+    if has_upload:
+        if validation_errors:
+            st.error("Data package validation failed:\n" + "\n".join(f"- {err}" for err in validation_errors))
+        else:
+            st.success("Data package validation passed.")
     st.markdown(
         (
             f'<div class="bw-muted">Signature files: {metadata["signature_count"]} | '
@@ -122,7 +123,7 @@ def render_metadata(metadata: dict, validation_errors: List[str]) -> None:
 
 
 def render_inputs(metadata, can_calculate: bool):
-    row = st.columns([1.0, 1.6, 1.6, 1.6, 1.2], gap="small")
+    row = st.columns([1.5, 1.4, 1.4, 1.4, 1.0], gap="small")
     with row[0]:
         st.markdown('<div class="bw-label">Data Package (.rar or .zip)</div>', unsafe_allow_html=True)
         st.file_uploader(
@@ -176,7 +177,7 @@ def render_inputs(metadata, can_calculate: bool):
     return {"params": params, "calculate": calculate}
 
 
-def load_data_package() -> Tuple[Optional[Path], dict, List[str]]:
+def load_data_package() -> Tuple[Optional[Path], dict, List[str], bool]:
     default_metadata = {"signature_count": 0, "delay_count": 0, "sampling_rate": 0}
     uploaded = st.session_state.get("data_package")
     if uploaded is None:
@@ -188,7 +189,7 @@ def load_data_package() -> Tuple[Optional[Path], dict, List[str]]:
             st.session_state.pop("validation_errors", None)
             st.session_state.pop("metadata", None)
             st.session_state.pop("data_hash", None)
-        return None, default_metadata, ["Upload a data package (.rar or .zip)."]
+        return None, default_metadata, [], False
 
     payload = uploaded.getvalue()
     payload_hash = hashlib.sha256(payload).hexdigest()
@@ -228,7 +229,7 @@ def load_data_package() -> Tuple[Optional[Path], dict, List[str]]:
     data_dir = Path(data_dir_value) if data_dir_value else None
     metadata = st.session_state.get("metadata", default_metadata)
     validation_errors = st.session_state.get("validation_errors", [])
-    return data_dir, metadata, validation_errors
+    return data_dir, metadata, validation_errors, True
 
 
 def extract_archive(archive_path: Path, target_dir: Path) -> List[str]:
