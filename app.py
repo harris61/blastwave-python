@@ -116,6 +116,15 @@ def render_inputs(metadata):
             if selected_dir:
                 st.session_state["input_dir"] = selected_dir
                 st.rerun()
+        manual_dir = st.text_input(
+            "Directory Path",
+            value=st.session_state.get("input_dir", ""),
+            key="manual_dir",
+            label_visibility="collapsed",
+        )
+        if manual_dir and manual_dir != st.session_state.get("input_dir"):
+            st.session_state["input_dir"] = manual_dir
+            st.rerun()
     with row[1]:
         st.markdown('<div class="bw-label">Field Constant (B)</div>', unsafe_allow_html=True)
         field_constant = st.number_input(
