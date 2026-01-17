@@ -163,9 +163,12 @@ def get_numeric_files(dir_path: Path, expected_count: int) -> List[Path]:
     if not dir_path.exists():
         raise ValueError(f"Folder not found: {dir_path}")
 
-    files = list(dir_path.glob("*.txt"))
     mapping = {}
-    for file_path in files:
+    for file_path in dir_path.iterdir():
+        if not file_path.is_file():
+            continue
+        if file_path.suffix.lower() != ".txt":
+            continue
         try:
             value = int(file_path.stem)
         except ValueError:
