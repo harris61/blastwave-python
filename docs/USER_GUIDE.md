@@ -2,7 +2,7 @@
 
 ## 1) Prepare Data
 
-Ensure your data directory follows this structure:
+Package your data using this structure (top-level folder name can be `Blasting Data`):
 
 ```
 Blasting Data/
@@ -20,9 +20,10 @@ Each subfolder uses plain `.txt` files as described in the README.
 streamlit run app.py
 ```
 
-## 3) Choose Data Directory
+## 3) Upload Data Package
 
-Use **Choose Directory** to select the folder that contains `Signature Wave`, `Delay Scenario`, `Explosive Weight`, and `Simulation Distance`.
+Use the **Data Package** uploader to provide a `.rar` or `.zip` file containing the required folders.
+The default upload limit is 100 MB.
 
 ## 4) Enter Inputs
 
@@ -36,17 +37,18 @@ Click **Calculate** to run the optimization. The charts and table update automat
 
 ## 6) Output Files
 
-The app writes four files into the same data directory:
+The app generates four result files and bundles them into a download:
 
 - `result_Tran.txt`
 - `result_Vert.txt`
 - `result_Long.txt`
 - `result_PVS.txt`
+- `result_data.zip`
 
-Each file contains one value per line.
+Each output file contains one value per line.
 
 ## Troubleshooting
 
 - Verify the sampling rate is consistent across signature files.
 - Ensure delay and explosive weight files have matching counts per scenario.
-- If the folder dialog does not open, Tkinter may be missing in your Python environment.
+- If `.rar` extraction fails, upload a `.zip` package or ensure 7-Zip (`7z`) is available (the repo bundles `tools/7z/7z.exe` for Cloud).

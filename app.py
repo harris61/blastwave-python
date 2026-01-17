@@ -1,8 +1,12 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import base64
+import hashlib
+import io
+import shutil
 import subprocess
-import sys
+import tempfile
+import zipfile
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -10,7 +14,7 @@ import streamlit as st
 import re
 
 from blastwave.core import compute_scenario_waves, extract_wave, get_peak_abs
-from blastwave.io import DEFAULT_SPS, get_default_dir, load_delay_scenarios, load_distance_data
+from blastwave.io import DEFAULT_SPS, load_delay_scenarios, load_distance_data
 from blastwave.io import load_signature_wave, load_weights, validate_scenario_alignment
 from blastwave.models import InputParams
 
@@ -45,27 +49,33 @@ def main() -> None:
     render_header(left_logo, right_logo)
 
     st.markdown('<div class="bw-content">', unsafe_allow_html=True)
-    if "input_dir" not in st.session_state:
-        st.session_state["input_dir"] = str(get_default_dir())
-    input_dir = Path(st.session_state["input_dir"])
-    metadata = read_input_metadata(input_dir)
-    render_metadata(input_dir, metadata)
+    data_dir, metadata, validation_errors = load_data_package()
+    render_metadata(metadata, validation_errors)
 
-    inputs = render_inputs(metadata)
+    inputs = render_inputs(metadata, data_dir is not None and not validation_errors)
 
-    if inputs["calculate"]:
+    if inputs["calculate"] and data_dir is not None:
         with st.spinner("Calculating..."):
             try:
-                signature, result = run_calculation(inputs["params"], input_dir)
+                signature, result = run_calculation(inputs["params"], data_dir)
             except Exception as exc:
                 st.error(f"Failed to compute PPV. {exc}")
                 return
-        output_paths = write_result_files(input_dir, result)
+        output_paths = write_result_files(data_dir, result)
         if output_paths:
             st.info(
                 "Output files saved: "
                 + ", ".join(str(path) for path in output_paths)
             )
+            archive_bytes = build_result_archive(output_paths)
+            if archive_bytes:
+                st.download_button(
+                    "Download result_data.zip",
+                    data=archive_bytes,
+                    file_name="result_data.zip",
+                    mime="application/zip",
+                    width="stretch",
+                )
         render_results(signature, result, inputs["params"])
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -88,10 +98,13 @@ def render_header(left_logo: str, right_logo: str) -> None:
     )
 
 
-def render_metadata(input_dir: Path, metadata: dict) -> None:
+def render_metadata(metadata: dict, validation_errors: List[str]) -> None:
+    if validation_errors:
+        st.error("Data package validation failed:\n" + "\n".join(f"- {err}" for err in validation_errors))
+    else:
+        st.success("Data package validation passed.")
     st.markdown(
         (
-            f'<div class="bw-muted">Data Directory: {input_dir}</div>'
             f'<div class="bw-muted">Signature files: {metadata["signature_count"]} | '
             f'Delay files: {metadata["delay_count"]} | Sample rate: {metadata["sampling_rate"]} sps | '
             f"{METADATA_NOTE} | {USBM_FORMULA}</div>"
@@ -107,24 +120,16 @@ def render_metadata(input_dir: Path, metadata: dict) -> None:
     )
 
 
-def render_inputs(metadata):
+def render_inputs(metadata, can_calculate: bool):
     row = st.columns([1.0, 1.6, 1.6, 1.6, 1.2], gap="small")
     with row[0]:
-        st.markdown('<div class="bw-label">Input Directory</div>', unsafe_allow_html=True)
-        if st.button("Choose Directory", width="stretch"):
-            selected_dir = _select_directory(st.session_state.get("input_dir", ""))
-            if selected_dir:
-                st.session_state["input_dir"] = selected_dir
-                st.rerun()
-        manual_dir = st.text_input(
-            "Directory Path",
-            value=st.session_state.get("input_dir", ""),
-            key="manual_dir",
+        st.markdown('<div class="bw-label">Data Package (.rar or .zip)</div>', unsafe_allow_html=True)
+        st.file_uploader(
+            "Upload Data Package",
+            type=["rar", "zip"],
+            key="data_package",
             label_visibility="collapsed",
         )
-        if manual_dir and manual_dir != st.session_state.get("input_dir"):
-            st.session_state["input_dir"] = manual_dir
-            st.rerun()
     with row[1]:
         st.markdown('<div class="bw-label">Field Constant (B)</div>', unsafe_allow_html=True)
         field_constant = st.number_input(
@@ -157,7 +162,7 @@ def render_inputs(metadata):
         )
     with row[4]:
         st.markdown('<div class="bw-label">&nbsp;</div>', unsafe_allow_html=True)
-        calculate = st.button("Calculate", width="stretch")
+        calculate = st.button("Calculate", width="stretch", disabled=not can_calculate)
 
     params = InputParams(
         signature_file_count=metadata["signature_count"],
@@ -170,35 +175,199 @@ def render_inputs(metadata):
     return {"params": params, "calculate": calculate}
 
 
-def _select_directory(current_dir: str) -> Optional[str]:
-    script = """
-import tkinter as tk
-from tkinter import filedialog
+def load_data_package() -> Tuple[Optional[Path], dict, List[str]]:
+    default_metadata = {"signature_count": 0, "delay_count": 0, "sampling_rate": 0}
+    uploaded = st.session_state.get("data_package")
+    if uploaded is None:
+        previous_root = st.session_state.get("temp_root")
+        if previous_root:
+            shutil.rmtree(previous_root, ignore_errors=True)
+            st.session_state.pop("temp_root", None)
+            st.session_state.pop("data_dir", None)
+            st.session_state.pop("validation_errors", None)
+            st.session_state.pop("metadata", None)
+            st.session_state.pop("data_hash", None)
+        return None, default_metadata, ["Upload a data package (.rar or .zip)."]
 
-root = tk.Tk()
-root.withdraw()
-root.attributes("-topmost", True)
-selected = filedialog.askdirectory(initialdir=r\"\"\"{current_dir}\"\"\" or None)
-root.destroy()
-if selected:
-    print(selected)
-"""
-    try:
-        result = subprocess.run(
-            [sys.executable, "-c", script.format(current_dir=current_dir)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError as exc:
-        st.error(f"Failed to open folder dialog. {exc}")
-        return None
+    payload = uploaded.getvalue()
+    payload_hash = hashlib.sha256(payload).hexdigest()
+    cached_hash = st.session_state.get("data_hash")
+    if cached_hash != payload_hash:
+        previous_root = st.session_state.get("temp_root")
+        if previous_root:
+            shutil.rmtree(previous_root, ignore_errors=True)
 
-    if result.returncode != 0:
-        st.error("Failed to open folder dialog. Tkinter may be unavailable.")
+        temp_root = Path(tempfile.mkdtemp(prefix="blastwave_"))
+        archive_path = temp_root / uploaded.name
+        archive_path.write_bytes(payload)
+        extracted_dir = temp_root / "extracted"
+        extracted_dir.mkdir(parents=True, exist_ok=True)
+
+        errors = extract_archive(archive_path, extracted_dir)
+        data_root = None
+        metadata = default_metadata
+        if not errors:
+            data_root = find_data_root(extracted_dir)
+            if data_root is None:
+                errors.append(
+                    "Required folders not found. Expected Signature Wave, Delay Scenario, "
+                    "Explosive Weight, and Simulation Distance."
+                )
+            else:
+                validation_errors, metadata = validate_data_dir(data_root)
+                errors.extend(validation_errors)
+
+        st.session_state["data_hash"] = payload_hash
+        st.session_state["temp_root"] = str(temp_root)
+        st.session_state["data_dir"] = str(data_root) if data_root else ""
+        st.session_state["validation_errors"] = errors
+        st.session_state["metadata"] = metadata
+
+    data_dir_value = st.session_state.get("data_dir") or ""
+    data_dir = Path(data_dir_value) if data_dir_value else None
+    metadata = st.session_state.get("metadata", default_metadata)
+    validation_errors = st.session_state.get("validation_errors", [])
+    return data_dir, metadata, validation_errors
+
+
+def extract_archive(archive_path: Path, target_dir: Path) -> List[str]:
+    suffix = archive_path.suffix.lower()
+    if suffix == ".zip":
+        try:
+            with zipfile.ZipFile(archive_path, "r") as archive:
+                archive.extractall(target_dir)
+        except zipfile.BadZipFile:
+            return ["The ZIP file is invalid or corrupted."]
+        return []
+
+    if suffix == ".rar":
+        extractor = find_7z_executable()
+        if extractor is None:
+            return [
+                "RAR extraction requires 7-Zip (7z) on the server. "
+                "Please upload a .zip package instead."
+            ]
+        result = shutil.which(extractor) or extractor
+        try:
+            run = subprocess.run(
+                [result, "x", str(archive_path), f"-o{target_dir}", "-y"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except OSError as exc:
+            return [f"Failed to extract RAR file. {exc}"]
+        if run.returncode != 0:
+            return ["Failed to extract RAR file. Ensure it is a valid .rar archive."]
+        return []
+
+    return ["Unsupported archive type. Please upload a .rar or .zip file."]
+
+
+def find_7z_executable() -> Optional[str]:
+    candidates = [
+        shutil.which("7z"),
+        shutil.which("7za"),
+        shutil.which("7zr"),
+        str(Path(__file__).parent / "tools" / "7z" / "7z.exe"),
+        "C:\\Program Files\\7-Zip\\7z.exe",
+        "C:\\Program Files (x86)\\7-Zip\\7z.exe",
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return candidate
+    return None
+
+
+def find_data_root(extracted_dir: Path) -> Optional[Path]:
+    preferred = extracted_dir / "Blasting Data"
+    if preferred.exists():
+        return preferred
+    required = {"Signature Wave", "Delay Scenario", "Explosive Weight", "Simulation Distance"}
+    if required.issubset({path.name for path in extracted_dir.iterdir() if path.is_dir()}):
+        return extracted_dir
+    for child in extracted_dir.iterdir():
+        if child.is_dir() and required.issubset({path.name for path in child.iterdir() if path.is_dir()}):
+            return child
+    return None
+
+
+def validate_data_dir(data_dir: Path) -> Tuple[List[str], dict]:
+    errors: List[str] = []
+    signature_dir = data_dir / "Signature Wave"
+    delay_dir = data_dir / "Delay Scenario"
+    weight_dir = data_dir / "Explosive Weight"
+    distance_dir = data_dir / "Simulation Distance"
+
+    for name, path in [
+        ("Signature Wave", signature_dir),
+        ("Delay Scenario", delay_dir),
+        ("Explosive Weight", weight_dir),
+        ("Simulation Distance", distance_dir),
+    ]:
+        if not path.exists():
+            errors.append(f"Missing folder: {name}")
+
+    signature_files = list_numeric_files(signature_dir) if signature_dir.exists() else []
+    delay_files = list_numeric_files(delay_dir) if delay_dir.exists() else []
+    weight_files = list_numeric_files(weight_dir) if weight_dir.exists() else []
+
+    if not signature_files:
+        errors.append("Signature Wave must contain numeric .txt files (1.txt, 2.txt, ...).")
+    if not delay_files:
+        errors.append("Delay Scenario must contain numeric .txt files (1.txt, 2.txt, ...).")
+    if not weight_files:
+        errors.append("Explosive Weight must contain numeric .txt files (1.txt, 2.txt, ...).")
+    if delay_files and weight_files and len(delay_files) != len(weight_files):
+        errors.append("Delay Scenario count must match Explosive Weight count.")
+
+    avg_path = distance_dir / "distanceaverage.txt"
+    sim_path = distance_dir / "distancesimulation.txt"
+    if distance_dir.exists():
+        if not avg_path.exists():
+            errors.append("Missing file: Simulation Distance/distanceaverage.txt")
+        if not sim_path.exists():
+            errors.append("Missing file: Simulation Distance/distancesimulation.txt")
+
+    sampling_rate = _read_sample_rate(signature_dir) if signature_dir.exists() else 0
+    if signature_files and sampling_rate == 0:
+        errors.append("Sample rate not found in signature files.")
+
+    if sim_path.exists() and delay_files:
+        sim_lines = sim_path.read_text().splitlines()
+        if len(sim_lines) < len(delay_files):
+            errors.append("distancesimulation.txt has fewer lines than delay scenarios.")
+
+    metadata = {
+        "signature_count": len(signature_files),
+        "delay_count": len(delay_files),
+        "sampling_rate": sampling_rate,
+    }
+    return errors, metadata
+
+
+def list_numeric_files(dir_path: Path) -> List[Path]:
+    files: List[Path] = []
+    if not dir_path.exists():
+        return files
+    for path in dir_path.glob("*.txt"):
+        try:
+            value = int(path.stem)
+        except ValueError:
+            continue
+        if value >= 1:
+            files.append(path)
+    return sorted(files, key=lambda item: int(item.stem))
+
+
+def build_result_archive(output_paths: List[Path]) -> Optional[bytes]:
+    if not output_paths:
         return None
-    selected = result.stdout.strip()
-    return selected or None
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path in output_paths:
+            archive.write(path, arcname=path.name)
+    return buffer.getvalue()
 
 
 def run_calculation(inputs: InputParams, default_dir: Path):
@@ -232,34 +401,6 @@ def run_calculation(inputs: InputParams, default_dir: Path):
         inputs.signature_weight,
     )
     return signature, result
-
-
-def read_input_metadata(default_dir: Path) -> dict:
-    signature_dir = default_dir / "Signature Wave"
-    delay_dir = default_dir / "Delay Scenario"
-    signature_count = _count_numeric_files(signature_dir)
-    delay_count = _count_numeric_files(delay_dir)
-    sampling_rate = _read_sample_rate(signature_dir)
-    return {
-        "signature_count": signature_count,
-        "delay_count": delay_count,
-        "sampling_rate": sampling_rate,
-    }
-
-
-def _count_numeric_files(dir_path: Path) -> int:
-    if not dir_path.exists():
-        return 0
-    count = 0
-    for path in dir_path.iterdir():
-        if path.is_file() and path.suffix.lower() == ".txt":
-            try:
-                value = int(path.stem)
-            except ValueError:
-                continue
-            if value >= 1:
-                count += 1
-    return count
 
 
 def _read_sample_rate(signature_dir: Path) -> int:
