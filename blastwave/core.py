@@ -23,7 +23,7 @@ def compute_scenario_waves(
     for scenario in range(scenario_count):
         distance_ratio = distances.ratios[scenario]
         if distance_ratio <= 0:
-            raise ValueError(f"Distance ratio tidak valid pada skenario {scenario + 1}.")
+            raise ValueError(f"Invalid distance ratio in scenario {scenario + 1}.")
 
         delay_list = delays.delays[scenario]
         weight_list = weights.weights[scenario]

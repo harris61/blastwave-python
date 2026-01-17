@@ -1,16 +1,36 @@
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 import base64
+import subprocess
+import sys
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
 import re
 
-from blastwave.compute import compute_scenario_waves, extract_wave, get_peak_abs
+from blastwave.core import compute_scenario_waves, extract_wave, get_peak_abs
 from blastwave.io import DEFAULT_SPS, get_default_dir, load_delay_scenarios, load_distance_data
 from blastwave.io import load_signature_wave, load_weights, validate_scenario_alignment
 from blastwave.models import InputParams
+
+PAGE_STYLE = """
+<style>
+[data-testid="stAppViewContainer"] > .main { padding-top: 50px !important; }
+.block-container { padding-top: 0; padding-bottom: 2rem; }
+[data-testid="stNumberInput"] button { display: none; }
+.bw-title { font-size: 3.12rem; font-weight: 700; margin: 0.2rem 0 0.6rem; text-align: center; }
+.bw-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.bw-header-title { flex: 1; text-align: center; }
+.bw-content { margin-top: 40px; }
+.bw-subtitle { font-size: 1.1rem; font-weight: 600; margin: 0.4rem 0; }
+.bw-label { font-size: 0.95rem; font-weight: 600; margin: 0.2rem 0; }
+.bw-muted { color: #666; font-size: 0.9rem; }
+.bw-plot-title { font-size: 0.95rem; font-weight: 600; margin: 0.6rem 0 0.2rem; }
+</style>
+"""
+METADATA_NOTE = "Note: Sample rate across signature waves must match."
+USBM_FORMULA = "USBM: v = K (D / sqrt(Qmax))^(-B) (Duvall and Petkof)"
 
 
 def main() -> None:
@@ -18,28 +38,44 @@ def main() -> None:
     icon_path = assets_dir / "sound__3__zx3_icon.ico"
     logo_path = assets_dir / "itb.png"
 
-    st.set_page_config(page_title="Blast Wave PPV Optimizer", layout="wide", page_icon=str(icon_path))
-    st.markdown(
-        """
-        <style>
-        [data-testid="stAppViewContainer"] > .main { padding-top: 50px !important; }
-        .block-container { padding-top: 0; padding-bottom: 2rem; }
-        [data-testid="stNumberInput"] button { display: none; }
-        .bw-title { font-size: 3.12rem; font-weight: 700; margin: 0.2rem 0 0.6rem; text-align: center; }
-        .bw-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-        .bw-header-title { flex: 1; text-align: center; }
-        .bw-content { margin-top: 40px; }
-        .bw-subtitle { font-size: 1.1rem; font-weight: 600; margin: 0.4rem 0; }
-        .bw-label { font-size: 0.95rem; font-weight: 600; margin: 0.2rem 0; }
-        .bw-muted { color: #666; font-size: 0.9rem; }
-        .bw-plot-title { font-size: 0.95rem; font-weight: 600; margin: 0.6rem 0 0.2rem; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    configure_page(icon_path)
     st.markdown('<div style="height:50px;"></div>', unsafe_allow_html=True)
     left_logo = _encode_image_base64(icon_path)
     right_logo = _encode_image_base64(logo_path)
+    render_header(left_logo, right_logo)
+
+    st.markdown('<div class="bw-content">', unsafe_allow_html=True)
+    if "input_dir" not in st.session_state:
+        st.session_state["input_dir"] = str(get_default_dir())
+    input_dir = Path(st.session_state["input_dir"])
+    metadata = read_input_metadata(input_dir)
+    render_metadata(input_dir, metadata)
+
+    inputs = render_inputs(metadata)
+
+    if inputs["calculate"]:
+        with st.spinner("Calculating..."):
+            try:
+                signature, result = run_calculation(inputs["params"], input_dir)
+            except Exception as exc:
+                st.error(f"Failed to compute PPV. {exc}")
+                return
+        output_paths = write_result_files(input_dir, result)
+        if output_paths:
+            st.info(
+                "Output files saved: "
+                + ", ".join(str(path) for path in output_paths)
+            )
+        render_results(signature, result, inputs["params"])
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def configure_page(icon_path: Path) -> None:
+    st.set_page_config(page_title="Blast Wave PPV Optimizer", layout="wide", page_icon=str(icon_path))
+    st.markdown(PAGE_STYLE, unsafe_allow_html=True)
+
+
+def render_header(left_logo: str, right_logo: str) -> None:
     st.markdown(
         (
             '<div class="bw-header">'
@@ -51,73 +87,68 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="bw-content">', unsafe_allow_html=True)
-    default_dir = get_default_dir()
-    metadata = read_input_metadata(default_dir)
+
+def render_metadata(input_dir: Path, metadata: dict) -> None:
     st.markdown(
         (
-            f'<div class="bw-muted">Input folder: {default_dir}</div>'
+            f'<div class="bw-muted">Data Directory: {input_dir}</div>'
             f'<div class="bw-muted">Signature files: {metadata["signature_count"]} | '
-            f'Delay files: {metadata["delay_count"]} | Sample rate: {metadata["sampling_rate"]} sps</div>'
+            f'Delay files: {metadata["delay_count"]} | Sample rate: {metadata["sampling_rate"]} sps | '
+            f"{METADATA_NOTE} | {USBM_FORMULA}</div>"
             '<div class="bw-muted">'
             'Created by: <a href="https://www.linkedin.com/in/harristio-adam/" target="_blank">Harristio Adam</a> | '
             'Supervised by: <a href="https://itb.ac.id/staf/profil/ganda-marihot-simangunsong" target="_blank">'
             'Prof. Dr.Eng. Ir. Ganda Marihot Simangunsong, S.T., M.T.</a> | '
-            'Github repo: <a href="https://github.com/harris61/blastwave-python" target="_blank">'
+            'Github: <a href="https://github.com/harris61/blastwave-python" target="_blank">'
             'github.com/harris61/blastwave-python</a>'
             "</div>"
         ),
         unsafe_allow_html=True,
     )
 
-    inputs = render_inputs(metadata)
-
-    if inputs["calculate"]:
-        with st.spinner("Calculating..."):
-            try:
-                signature, result = run_calculation(inputs["params"], default_dir)
-            except Exception as exc:
-                st.error(f"Gagal menghitung PPV. {exc}")
-                return
-        render_results(signature, result, inputs["params"])
-    st.markdown("</div>", unsafe_allow_html=True)
-
 
 def render_inputs(metadata):
-    row = st.columns([2, 2, 2, 1.2])
+    row = st.columns([1.0, 1.6, 1.6, 1.6, 1.2], gap="small")
     with row[0]:
-        st.markdown('<div class="bw-label">Konstanta Lapangan</div>', unsafe_allow_html=True)
+        st.markdown('<div class="bw-label">Input Directory</div>', unsafe_allow_html=True)
+        if st.button("Choose Directory", width="stretch"):
+            selected_dir = _select_directory(st.session_state.get("input_dir", ""))
+            if selected_dir:
+                st.session_state["input_dir"] = selected_dir
+                st.rerun()
+    with row[1]:
+        st.markdown('<div class="bw-label">Field Constant (B)</div>', unsafe_allow_html=True)
         field_constant = st.number_input(
-            "Konstanta Lapangan",
+            "Field Constant",
             min_value=0.0,
             step=0.1,
             format="%g",
             key="field_constant",
             label_visibility="collapsed",
         )
-    with row[1]:
-        st.markdown('<div class="bw-label">Muatan Signature Hole (kg)</div>', unsafe_allow_html=True)
+    with row[2]:
+        st.markdown('<div class="bw-label">Signature Hole Charge (kg)</div>', unsafe_allow_html=True)
         signature_weight = st.number_input(
-            "Muatan Signature Hole (kg)",
+            "Signature Hole Charge (kg)",
             min_value=0.0,
             step=0.1,
             format="%g",
             key="sig_weight",
             label_visibility="collapsed",
         )
-    with row[2]:
-        st.markdown('<div class="bw-label">Lama Pengukuran (ms)</div>', unsafe_allow_html=True)
+    with row[3]:
+        st.markdown('<div class="bw-label">Full Blast Duration (ms)</div>', unsafe_allow_html=True)
         measurement_ms = st.number_input(
-            "Lama Pengukuran (ms)",
+            "Full Blast Duration (ms)",
             min_value=0,
             step=1,
             format="%d",
             key="measurement_ms",
             label_visibility="collapsed",
         )
-    with row[3]:
+    with row[4]:
         st.markdown('<div class="bw-label">&nbsp;</div>', unsafe_allow_html=True)
-        calculate = st.button("Calculate", use_container_width=True)
+        calculate = st.button("Calculate", width="stretch")
 
     params = InputParams(
         signature_file_count=metadata["signature_count"],
@@ -130,16 +161,45 @@ def render_inputs(metadata):
     return {"params": params, "calculate": calculate}
 
 
+def _select_directory(current_dir: str) -> Optional[str]:
+    script = """
+import tkinter as tk
+from tkinter import filedialog
+
+root = tk.Tk()
+root.withdraw()
+root.attributes("-topmost", True)
+selected = filedialog.askdirectory(initialdir=r\"\"\"{current_dir}\"\"\" or None)
+root.destroy()
+if selected:
+    print(selected)
+"""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", script.format(current_dir=current_dir)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        st.error(f"Failed to open folder dialog. {exc}")
+        return None
+
+    if result.returncode != 0:
+        st.error("Failed to open folder dialog. Tkinter may be unavailable.")
+        return None
+    selected = result.stdout.strip()
+    return selected or None
+
+
 def run_calculation(inputs: InputParams, default_dir: Path):
     if not default_dir.exists():
         raise ValueError(f"Folder not found: {default_dir}")
 
     if inputs.sampling_rate % DEFAULT_SPS != 0:
-        raise ValueError(f"Sampling rate harus habis dibagi {DEFAULT_SPS}.")
-    if inputs.field_constant <= 0:
-        raise ValueError("Konstanta Lapangan harus angka > 0.")
+        raise ValueError(f"Sampling rate must be divisible by {DEFAULT_SPS}.")
     if inputs.signature_weight <= 0:
-        raise ValueError("Muatan Signature Hole harus angka > 0.")
+        raise ValueError("Signature hole charge must be > 0.")
 
     ratio_sps = inputs.sampling_rate // DEFAULT_SPS
 
@@ -239,31 +299,31 @@ def render_results(signature, result, inputs: InputParams) -> None:
         st.markdown(
             (
                 f'<div class="bw-subtitle" style="text-align:center;">'
-                f'Optimized Peak Vector Sum(mm/s, 1/{inputs.sampling_rate} ms)</div>'
+                f'Optimized Peak Vector Sum (mm/s, 1/{inputs.sampling_rate} ms)</div>'
             ),
             unsafe_allow_html=True,
         )
         st.pyplot(
             plot_series(
                 extract_wave(result.pvs, result.opt_pvs_index, result.wave_length),
-                f"Skenario {result.opt_pvs_index + 1} Peak Vector Sum PPV = {result.opt_pvs_ppv} mm/s",
+                f"Scenario {result.opt_pvs_index + 1} Peak Vector Sum PPV = {result.opt_pvs_ppv} mm/s",
                 "green",
                 max_x,
                 figsize=(4.2, 1.8),
             ),
-            use_container_width=True,
+            width="stretch",
         )
         render_ppv_table(result, height=208)
 
     header = st.columns([3, 3])
     with header[0]:
         st.markdown(
-            f'<div class="bw-subtitle">Signature Wave(mm/s, 1/{inputs.sampling_rate} ms)</div>',
+            f'<div class="bw-subtitle">Signature Wave (mm/s, 1/{inputs.sampling_rate} ms)</div>',
             unsafe_allow_html=True,
         )
     with header[1]:
         st.markdown(
-            f'<div class="bw-subtitle">Optimized Full Blast Wave(mm/s, 1/{inputs.sampling_rate} ms)</div>',
+            f'<div class="bw-subtitle">Optimized Full Blast Wave (mm/s, 1/{inputs.sampling_rate} ms)</div>',
             unsafe_allow_html=True,
         )
 
@@ -273,7 +333,7 @@ def render_results(signature, result, inputs: InputParams) -> None:
             signature.tran,
             "turquoise",
             (
-                f"Skenario {result.opt_tran_index + 1} Full Blast Transversal Wave PPV = "
+                f"Scenario {result.opt_tran_index + 1} Full Blast Transversal Wave PPV = "
                 f"{result.opt_tran_ppv} mm/s"
             ),
             extract_wave(result.tran, result.opt_tran_index, result.wave_length),
@@ -284,7 +344,7 @@ def render_results(signature, result, inputs: InputParams) -> None:
             signature.vert,
             "blue",
             (
-                f"Skenario {result.opt_vert_index + 1} Full Blast Vertical Wave PPV = "
+                f"Scenario {result.opt_vert_index + 1} Full Blast Vertical Wave PPV = "
                 f"{result.opt_vert_ppv} mm/s"
             ),
             extract_wave(result.vert, result.opt_vert_index, result.wave_length),
@@ -295,7 +355,7 @@ def render_results(signature, result, inputs: InputParams) -> None:
             signature.long,
             "purple",
             (
-                f"Skenario {result.opt_long_index + 1} Full Blast Longitudinal Wave PPV = "
+                f"Scenario {result.opt_long_index + 1} Full Blast Longitudinal Wave PPV = "
                 f"{result.opt_long_ppv} mm/s"
             ),
             extract_wave(result.long, result.opt_long_index, result.wave_length),
@@ -309,14 +369,36 @@ def render_results(signature, result, inputs: InputParams) -> None:
             st.markdown(f'<div class="bw-plot-title">{left_title}</div>', unsafe_allow_html=True)
             st.pyplot(
                 plot_series(left_data, "", left_color, max_x, figsize=(4.2, 1.8)),
-                use_container_width=True,
+                width="stretch",
             )
         with row[1]:
             st.markdown(f'<div class="bw-plot-title">{right_title}</div>', unsafe_allow_html=True)
             st.pyplot(
                 plot_series(right_data, "", right_color, max_x, figsize=(4.2, 1.8)),
-                use_container_width=True,
+                width="stretch",
             )
+
+
+def write_result_files(output_dir: Path, result) -> List[Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    outputs = {
+        "result_Tran.txt": extract_wave(result.tran, result.opt_tran_index, result.wave_length),
+        "result_Vert.txt": extract_wave(result.vert, result.opt_vert_index, result.wave_length),
+        "result_Long.txt": extract_wave(result.long, result.opt_long_index, result.wave_length),
+        "result_PVS.txt": extract_wave(result.pvs, result.opt_pvs_index, result.wave_length),
+    }
+    written: List[Path] = []
+    try:
+        for name, data in outputs.items():
+            path = output_dir / name
+            with path.open("w", encoding="ascii", newline="\n") as handle:
+                for value in data:
+                    handle.write(f"{value}\n")
+            written.append(path)
+    except OSError as exc:
+        st.error(f"Failed to save output files. {exc}")
+        return []
+    return written
 
 
 def render_ppv_table(result, height: int = 260) -> None:
@@ -325,7 +407,7 @@ def render_ppv_table(result, height: int = 260) -> None:
     for index in range(scenario_count):
         rows.append(
             {
-                "Skenario Delay": index + 1,
+                "Delay Scenario": index + 1,
                 "PPV Tran (mm/s)": result.ppv[0][index],
                 "PPV Vert (mm/s)": result.ppv[1][index],
                 "PPV Long (mm/s)": result.ppv[2][index],
@@ -334,7 +416,7 @@ def render_ppv_table(result, height: int = 260) -> None:
         )
 
     df = pd.DataFrame(rows)
-    st.dataframe(df, use_container_width=True, height=height)
+    st.dataframe(df, width="stretch", height=height)
 
 
 def plot_series(data: List[float], title: str, color: str, max_x: int, figsize=(5.2, 2.2)):

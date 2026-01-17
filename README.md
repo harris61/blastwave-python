@@ -1,10 +1,15 @@
 # Blast Wave PPV Optimizer (Streamlit)
 
-Port of the WinForms app to Python + Streamlit. This version reads input from the same default location:
+Blast vibration PPV optimizer for signature-hole workflows, implemented in Python + Streamlit. The app reads blasting data from a selected data directory and computes optimized full-blast waves using the USBM formulation.
 
-`C:\Users\<YourUser>\Documents\Blasting Data`
+## Key Features
 
-## Folder Structure
+- Choose the data directory from the UI (default: `C:\Users\<YourUser>\Documents\Blasting Data`).
+- Compute optimized full-blast transversal, vertical, longitudinal, and PVS waves.
+- Export outputs as `result_Tran.txt`, `result_Vert.txt`, `result_Long.txt`, and `result_PVS.txt` in the data directory.
+- Scientific core isolated in `blastwave/core.py` for research continuity.
+
+## Data Directory Layout
 
 ```
 Blasting Data/
@@ -36,6 +41,11 @@ streamlit run app.py
 
 ## Notes
 
-- Sampling rate must be divisible by 1024.
-- Signature wave file must contain at least 3 numeric columns per line.
-- Delay files skip the first line (header), remaining lines are delay values in ms.
+- Sampling rate must be divisible by 1024 and consistent across signature files.
+- Signature wave files must contain at least three numeric columns per line.
+- Delay files skip the first line (header); remaining lines are delay values in ms.
+- Output waveforms are saved as plain text with one value per line.
+
+## Documentation
+
+See `docs/USER_GUIDE.md` for a concise end-to-end workflow.

@@ -22,7 +22,7 @@ def load_signature_wave(
     start_wave = 270 * ratio_sps
     end_wave = measurement_ms * ratio_sps
     if end_wave <= start_wave:
-        raise ValueError("Lama Pengukuran terlalu kecil untuk window signature.")
+        raise ValueError("Measurement duration is too short for the signature window.")
 
     length_wave = end_wave - start_wave
     sum_tran = [0.0] * length_wave
@@ -32,13 +32,13 @@ def load_signature_wave(
     for file_path in files_wave:
         lines = file_path.read_text().splitlines()
         if len(lines) <= end_wave:
-            raise ValueError(f"File signature terlalu pendek: {file_path.name}")
+            raise ValueError(f"Signature file is too short: {file_path.name}")
 
         for i in range(length_wave):
             line = lines[start_wave + i]
             parsed = _try_parse_wave_line(line)
             if parsed is None:
-                raise ValueError(f"Format data signature tidak valid: {file_path.name}")
+                raise ValueError(f"Invalid signature data format: {file_path.name}")
             tran, vert, lon = parsed
             sum_tran[i] += tran
             sum_vert[i] += vert
@@ -70,14 +70,14 @@ def load_delay_scenarios(
     for file_path in files_delay:
         lines = file_path.read_text().splitlines()
         if len(lines) <= 1:
-            raise ValueError(f"Delay file tidak memiliki data: {file_path.name}")
+            raise ValueError(f"Delay file has no data: {file_path.name}")
 
         delay_values: List[int] = []
         for line in lines[1:]:
             try:
                 value = int(line)
             except ValueError as exc:
-                raise ValueError(f"Data delay tidak valid: {file_path.name}") from exc
+                raise ValueError(f"Invalid delay data: {file_path.name}") from exc
             delay_values.append(value * ratio_sps)
 
         delay_values.sort()
@@ -100,7 +100,7 @@ def load_weights(default_dir: Path, file_count: int) -> WeightData:
             try:
                 value = float(line)
             except ValueError as exc:
-                raise ValueError(f"Data weight tidak valid: {file_path.name}") from exc
+                raise ValueError(f"Invalid weight data: {file_path.name}") from exc
             weight_values.append(value)
         weights.append(weight_values)
 
@@ -114,30 +114,30 @@ def load_distance_data(default_dir: Path, scenario_count: int) -> DistanceData:
 
     avg_lines = avg_path.read_text().splitlines()
     if not avg_lines:
-        raise ValueError("distanceaverage.txt kosong.")
+        raise ValueError("distanceaverage.txt is empty.")
 
     sum_distance = 0.0
     for line in avg_lines:
         try:
             value = float(line)
         except ValueError as exc:
-            raise ValueError("Data distance average tidak valid.") from exc
+            raise ValueError("Invalid distance average data.") from exc
         sum_distance += value
 
     average_distance = sum_distance / len(avg_lines)
     if average_distance <= 0:
-        raise ValueError("Average distance tidak valid.")
+        raise ValueError("Invalid average distance.")
 
     sim_lines = sim_path.read_text().splitlines()
     if len(sim_lines) < scenario_count:
-        raise ValueError("Jumlah distance simulation lebih sedikit dari skenario.")
+        raise ValueError("Distance simulation count is smaller than scenario count.")
 
     ratios: List[float] = []
     for line in sim_lines:
         try:
             value = float(line)
         except ValueError as exc:
-            raise ValueError("Data distance simulation tidak valid.") from exc
+            raise ValueError("Invalid distance simulation data.") from exc
         ratios.append(value / average_distance)
 
     return DistanceData(ratios=ratios)
@@ -149,14 +149,14 @@ def validate_scenario_alignment(
     distances: DistanceData,
 ) -> None:
     if len(delays.delays) != len(weights.weights):
-        raise ValueError("Jumlah file delay dan weight tidak sama.")
+        raise ValueError("Delay file count does not match weight file count.")
 
     for index, delay_list in enumerate(delays.delays):
         if len(delay_list) != len(weights.weights[index]):
-            raise ValueError(f"Jumlah data delay dan weight tidak sama pada skenario {index + 1}.")
+            raise ValueError(f"Delay and weight data count mismatch in scenario {index + 1}.")
 
     if len(distances.ratios) < len(delays.delays):
-        raise ValueError("Jumlah distance ratio kurang dari jumlah skenario.")
+        raise ValueError("Distance ratio count is smaller than scenario count.")
 
 
 def get_numeric_files(dir_path: Path, expected_count: int) -> List[Path]:
@@ -176,14 +176,14 @@ def get_numeric_files(dir_path: Path, expected_count: int) -> List[Path]:
             mapping[value] = file_path
 
     if len(mapping) < expected_count:
-        raise ValueError(f"Jumlah file di {dir_path.name} lebih sedikit dari input.")
+        raise ValueError(f"File count in {dir_path.name} is smaller than the requested count.")
 
     ordered: List[Path] = []
     for value in range(1, expected_count + 1):
         file_path = mapping.get(value)
         if file_path is None:
             raise ValueError(
-                f"File di {dir_path.name} harus bernomor mulai 1 sampai {expected_count}."
+                f"Files in {dir_path.name} must be numbered from 1 to {expected_count}."
             )
         ordered.append(file_path)
 
