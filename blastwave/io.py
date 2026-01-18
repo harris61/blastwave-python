@@ -31,11 +31,19 @@ def load_signature_wave(
 
     for file_path in files_wave:
         lines = file_path.read_text().splitlines()
-        if len(lines) <= end_wave:
+        data_start_index = None
+        for index, line in enumerate(lines):
+            if _try_parse_wave_line(line) is not None:
+                data_start_index = index
+                break
+        if data_start_index is None:
+            raise ValueError(f"Signature data not found: {file_path.name}")
+
+        if len(lines) <= data_start_index + end_wave:
             raise ValueError(f"Signature file is too short: {file_path.name}")
 
         for i in range(length_wave):
-            line = lines[start_wave + i]
+            line = lines[data_start_index + start_wave + i]
             parsed = _try_parse_wave_line(line)
             if parsed is None:
                 raise ValueError(f"Invalid signature data format: {file_path.name}")
