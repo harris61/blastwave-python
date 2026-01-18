@@ -36,18 +36,34 @@ PAGE_STYLE = """
 """
 METADATA_NOTE = "Note: Sample rate across signature waves must match."
 USBM_FORMULA = "USBM: v = K (D / sqrt(Qmax))^(-B) (Duvall and Petkof)"
+APP_TITLE = "Blast Wave PPV Optimizer"
+
+
+def get_release_version() -> str:
+    repo_dir = Path(__file__).parent
+    try:
+        return (
+            subprocess.check_output(
+                ["git", "-C", str(repo_dir), "describe", "--tags", "--abbrev=0"],
+                text=True,
+            )
+            .strip()
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return "dev"
 
 
 def main() -> None:
     assets_dir = Path(__file__).parent / "assets"
     icon_path = assets_dir / "sound__3__zx3_icon.ico"
     logo_path = assets_dir / "itb.png"
+    title = f"{APP_TITLE} {get_release_version()}"
 
-    configure_page(icon_path)
+    configure_page(icon_path, title)
     st.markdown('<div style="height:50px;"></div>', unsafe_allow_html=True)
     left_logo = _encode_image_base64(icon_path)
     right_logo = _encode_image_base64(logo_path)
-    render_header(left_logo, right_logo)
+    render_header(left_logo, right_logo, title)
 
     st.markdown('<div class="bw-content">', unsafe_allow_html=True)
     data_dir, metadata, validation_errors, has_upload = load_data_package()
@@ -81,17 +97,17 @@ def main() -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-def configure_page(icon_path: Path) -> None:
-    st.set_page_config(page_title="Blast Wave PPV Optimizer", layout="wide", page_icon=str(icon_path))
+def configure_page(icon_path: Path, title: str) -> None:
+    st.set_page_config(page_title=title, layout="wide", page_icon=str(icon_path))
     st.markdown(PAGE_STYLE, unsafe_allow_html=True)
 
 
-def render_header(left_logo: str, right_logo: str) -> None:
+def render_header(left_logo: str, right_logo: str, title: str) -> None:
     st.markdown(
         (
             '<div class="bw-header">'
             f'<img src="{left_logo}" width="80" />'
-            '<div class="bw-header-title"><div class="bw-title">Blast Wave PPV Optimizer</div></div>'
+            f'<div class="bw-header-title"><div class="bw-title">{title}</div></div>'
             f'<img src="{right_logo}" width="96" />'
             "</div>"
         ),
