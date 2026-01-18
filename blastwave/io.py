@@ -19,7 +19,7 @@ def load_signature_wave(
     dir_wave = default_dir / "Signature Wave"
     files_wave = get_numeric_files(dir_wave, file_count)
 
-    start_wave = 270 * ratio_sps
+    start_wave = 0
     end_wave = measurement_ms * ratio_sps
     if end_wave <= start_wave:
         raise ValueError("Measurement duration is too short for the signature window.")
