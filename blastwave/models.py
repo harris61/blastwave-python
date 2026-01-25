@@ -7,7 +7,6 @@ class InputParams:
     signature_file_count: int
     delay_file_count: int
     sampling_rate: int
-    measurement_ms: int
     field_constant: float
     signature_weight: float
 

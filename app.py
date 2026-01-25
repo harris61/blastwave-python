@@ -131,7 +131,9 @@ def render_metadata(metadata: dict, validation_errors: List[str], has_upload: bo
             'Supervised by: <a href="https://itb.ac.id/staf/profil/ganda-marihot-simangunsong" target="_blank">'
             'Prof. Dr.Eng. Ir. Ganda Marihot Simangunsong, S.T., M.T.</a> | '
             'Github: <a href="https://github.com/harris61/blastwave-python" target="_blank">'
-            'github.com/harris61/blastwave-python</a>'
+            'github.com/harris61/blastwave-python</a> | '
+            'Github (Offline, Desktop version): <a href="https://github.com/harris61/blastwave-csharp" '
+            'target="_blank">github.com/harris61/blastwave-csharp</a>'
             "</div>"
         ),
         unsafe_allow_html=True,
@@ -139,7 +141,7 @@ def render_metadata(metadata: dict, validation_errors: List[str], has_upload: bo
 
 
 def render_inputs(metadata, can_calculate: bool):
-    row = st.columns([1.5, 1.4, 1.4, 1.4, 1.0], gap="small")
+    row = st.columns([1.5, 1.4, 1.4, 1.0], gap="small")
     with row[0]:
         st.markdown('<div class="bw-label">Data Package (.rar or .zip)</div>', unsafe_allow_html=True)
         st.file_uploader(
@@ -169,16 +171,6 @@ def render_inputs(metadata, can_calculate: bool):
             label_visibility="collapsed",
         )
     with row[3]:
-        st.markdown('<div class="bw-label">Full Blast Duration (ms)</div>', unsafe_allow_html=True)
-        measurement_ms = st.number_input(
-            "Full Blast Duration (ms)",
-            min_value=0,
-            step=1,
-            format="%d",
-            key="measurement_ms",
-            label_visibility="collapsed",
-        )
-    with row[4]:
         st.markdown('<div class="bw-label">&nbsp;</div>', unsafe_allow_html=True)
         calculate = st.button("Calculate", width="stretch", disabled=not can_calculate)
 
@@ -186,7 +178,6 @@ def render_inputs(metadata, can_calculate: bool):
         signature_file_count=metadata["signature_count"],
         delay_file_count=metadata["delay_count"],
         sampling_rate=metadata["sampling_rate"],
-        measurement_ms=int(measurement_ms),
         field_constant=float(field_constant),
         signature_weight=float(signature_weight),
     )
@@ -423,12 +414,7 @@ def run_calculation(inputs: InputParams, default_dir: Path):
 
     ratio_sps = inputs.sampling_rate // DEFAULT_SPS
 
-    signature = load_signature_wave(
-        default_dir,
-        inputs.signature_file_count,
-        inputs.measurement_ms,
-        ratio_sps,
-    )
+    signature = load_signature_wave(default_dir, inputs.signature_file_count)
     delays = load_delay_scenarios(default_dir, inputs.delay_file_count, ratio_sps)
     weights = load_weights(default_dir, inputs.delay_file_count)
     distances = load_distance_data(default_dir, inputs.delay_file_count)

@@ -13,21 +13,31 @@ def get_default_dir() -> Path:
 def load_signature_wave(
     default_dir: Path,
     file_count: int,
-    measurement_ms: int,
-    ratio_sps: int,
 ) -> SignatureWaveData:
     dir_wave = default_dir / "Signature Wave"
     files_wave = get_numeric_files(dir_wave, file_count)
 
-    start_wave = 0
-    end_wave = measurement_ms * ratio_sps
-    if end_wave <= start_wave:
-        raise ValueError("Measurement duration is too short for the signature window.")
+    max_length = 0
+    for file_path in files_wave:
+        lines = file_path.read_text().splitlines()
+        data_start_index = None
+        for index, line in enumerate(lines):
+            if _try_parse_wave_line(line) is not None:
+                data_start_index = index
+                break
+        if data_start_index is None:
+            raise ValueError(f"Signature data not found: {file_path.name}")
 
-    length_wave = end_wave - start_wave
-    sum_tran = [0.0] * length_wave
-    sum_vert = [0.0] * length_wave
-    sum_long = [0.0] * length_wave
+        data_length = len(lines) - data_start_index
+        if data_length > max_length:
+            max_length = data_length
+
+    if max_length <= 0:
+        raise ValueError("Signature data is empty.")
+
+    sum_tran = [0.0] * max_length
+    sum_vert = [0.0] * max_length
+    sum_long = [0.0] * max_length
 
     for file_path in files_wave:
         lines = file_path.read_text().splitlines()
@@ -39,11 +49,9 @@ def load_signature_wave(
         if data_start_index is None:
             raise ValueError(f"Signature data not found: {file_path.name}")
 
-        if len(lines) <= data_start_index + end_wave:
-            raise ValueError(f"Signature file is too short: {file_path.name}")
-
-        for i in range(length_wave):
-            line = lines[data_start_index + start_wave + i]
+        data_length = len(lines) - data_start_index
+        for i in range(data_length):
+            line = lines[data_start_index + i]
             parsed = _try_parse_wave_line(line)
             if parsed is None:
                 raise ValueError(f"Invalid signature data format: {file_path.name}")
@@ -60,7 +68,7 @@ def load_signature_wave(
         tran=tran_wave,
         vert=vert_wave,
         long=long_wave,
-        length=length_wave,
+        length=max_length,
     )
 
 

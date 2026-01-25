@@ -29,7 +29,7 @@ The default upload limit is 100 MB.
 
 - Field Constant (B)
 - Signature Hole Charge (kg)
-- Full Blast Duration (ms)
+- Measurement duration (auto-detected from signature wave files)
 
 ## 5) Calculate
 
