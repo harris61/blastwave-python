@@ -137,6 +137,13 @@ def render_metadata(metadata: dict, validation_errors: List[str], has_upload: bo
             'Github (Offline, Desktop version): <a href="https://github.com/harris61/blastwave-csharp" '
             'target="_blank">github.com/harris61/blastwave-csharp</a>'
             "</div>"
+            '<div class="bw-muted">'
+            "Based on Harristio Adam's undergraduate thesis at ITB under supervision of "
+            "Prof. Dr.Eng. Ir. Ganda Marihot Simangunsong, S.T., M.T. titled "
+            '<a href="https://drive.google.com/drive/folders/1z67E5iyqw2RTQVNcI5VUTwEXYKsZ3Cjo?usp=sharing" '
+            'target="_blank">"Software Development to Determine Blasting Vibration based on Superposition '
+            'of Signature Hole Vibration Wave"</a>'
+            "</div>"
         ),
         unsafe_allow_html=True,
     )
