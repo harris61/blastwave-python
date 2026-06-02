@@ -70,6 +70,8 @@ def main() -> None:
     render_metadata(metadata, validation_errors, has_upload)
 
     inputs = render_inputs(metadata, data_dir is not None and not validation_errors)
+    if not inputs["calculate"]:
+        render_tutorial()
 
     if inputs["calculate"] and data_dir is not None:
         with st.spinner("Calculating..."):
@@ -137,6 +139,56 @@ def render_metadata(metadata: dict, validation_errors: List[str], has_upload: bo
             "</div>"
         ),
         unsafe_allow_html=True,
+    )
+
+
+def render_tutorial() -> None:
+    st.markdown('<div style="height:28px;"></div>', unsafe_allow_html=True)
+    st.markdown(
+        """
+### Tutorial
+
+Blast Wave PPV Optimizer estimates full-blast vibration using wave superposition
+from measured signature-hole waves, delay scenarios, explosive weights, and
+simulation distances. The app compares PPV values and recommends the
+lowest-vibration scenario.
+
+1. **Export signature wave data from Blastware.** Save the exported text files as
+   numbered `.txt` files inside `Signature Wave/`, for example `1.txt`, `2.txt`,
+   and `3.txt`. Each data row must contain at least three numeric columns:
+   `transversal vertical longitudinal`.
+
+2. **Export delay scenarios from SHOTPlus-i.** Save each blast design scenario as
+   a numbered `.txt` file inside `Delay Scenario/`. The first line is treated as
+   a header, and the following lines must contain delay values in milliseconds:
+   `Delay`, `0`, `25`, `50`, `75`, and so on.
+
+3. **Prepare explosive weight files.** Create one numbered `.txt` file inside
+   `Explosive Weight/` for each delay scenario. Each line contains the explosive
+   weight for one blast hole in kilograms, ordered according to the firing
+   sequence.
+
+4. **Prepare simulation distance files.** Add `distanceaverage.txt` and
+   `distancesimulation.txt` inside `Simulation Distance/`. The first file contains
+   measured signature-hole distances; the second contains one simulation distance
+   for each delay scenario.
+
+5. **Package the data.** Place all folders inside `Blasting Data/`, then compress
+   it into `.zip` or `.rar`:
+
+```text
+Blasting Data/
+  Signature Wave/
+  Delay Scenario/
+  Explosive Weight/
+  Simulation Distance/
+```
+
+6. **Upload, input parameters, and calculate.** Upload the package, enter
+   **Field Constant (B)** and **Signature Hole Charge (kg)**, then click
+   **Calculate** to generate waveform visualizations, PPV values, Peak Vector Sum,
+   the recommended lowest-vibration scenario, and downloadable result files.
+        """
     )
 
 
